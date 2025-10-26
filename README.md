@@ -75,7 +75,7 @@ Smart Bank follows a **modular layered architecture**:
 | Component | Technology |
 |------------|-------------|
 | **Backend** | FastAPI (Python) |
-| **Database** | PostgreSQL (hosted on Railway) |
+| **Database** | PostgreSQL |
 | **ORM** | SQLAlchemy |
 | **Auth** | JWT (PyJWT) + bcrypt |
 | **Rate Limiting** | SlowAPI |
@@ -104,25 +104,53 @@ Smart Bank follows a **modular layered architecture**:
 ---------------------------------
 ```
 smartbank/
-├── main.py # FastAPI entry point
-├── app/
-│ ├── api/
-│ │ ├── routes/
-│ │ │ ├── auth.py # Signup, login
-│ │ │ └── kyc.py # KYC upload, verification
-│ ├── core/
-│ │ ├── config.py # Env, database URL
-│ │ ├── security.py # JWT & password hashing
-│ │ └── rate_limit.py # Request throttling
-│ ├── db/
-│ │ ├── models.py # User, KYC models
-│ │ └── session.py # SQLAlchemy engine
-│ └── schemas/
-│ ├── user_schema.py
-│ └── kyc_schema.py
-├── requirements.txt
-├── .env.example
-└── README.md
+│
+├─ app/
+│  ├─ __init__.py
+│  ├─ main.py                         # Entry point of FastAPI
+│  │
+│  ├─ api/
+│  │  ├─ __init__.py
+│  │  └─ routes/
+│  │     ├─ __init__.py
+│  │     ├─ auth.py                   # /auth/signup, /auth/login, /auth/logout
+│  │     ├─ users.py                  # /users/me, /users/all
+│  │     ├─ kyc.py                    # /kyc/upload, /kyc/status, /kyc/verify/{user_id}
+│  │     ├─ admin.py                  # /admin/kyc/pending
+│  │     ├─ audit.py                  # /audit/logs
+│  │     └─ account.py                # /account/create, /account/balance, etc.
+│  │
+│  ├─ db/
+│  │  ├─ __init__.py
+│  │  ├─ session.py                   # SQLAlchemy engine, session
+│  │  └─ models.py                    # SQLAlchemy models: User, Account, KYC, AuditLog
+│  │
+│  ├─ schemas/
+│  │  ├─ __init__.py
+│  │  ├─ auth_schema.py               
+│  │  ├─ user_schema.py               
+│  │  ├─ kyc_schema.py                
+│  │  └─ account_schema.py            
+│  │
+│  ├─ utils/
+│  │  ├─ __init__.py
+│  │  ├─ auth.py                      
+│  │  ├─ jwt.py                       
+│  │  └─ rate_limiter.py              
+│  │
+│  ├─ core/
+│  │  ├─ __init__.py
+│  │  ├─ config.py                    
+│  │  └─ security.py                 
+│  │
+│  └─ test_files/                     
+│
+├─ venv/                             
+│
+├─ requirements.txt                   
+├─ .env                               
+└─ README.md                         
+
 ```
 
 ---
@@ -165,10 +193,12 @@ Visit: http://127.0.0.1:8000/docs
 
 | **Endpoint** | **Method** | **Description** |
 |---------------|------------|-----------------|
+| `/account/create` | **POST** | Account create |
 | `/auth/signup` | **POST** | Register a new user |
 | `/auth/login` | **POST** | Authenticate and get JWT token |
 | `/users/me` | **GET** | Get current logged-in user details |
 | `/kyc/upload` | **POST** | Upload KYC document |
+| `/admin/kyc/pending` | **GET** | Pending KYC |
 | `/kyc/status` | **GET** | View current KYC verification status |
 | `/kyc/verify/{user_id}` | **PATCH** | Admin approves or rejects KYC |
 | `/users/all` | **GET** | List all users (Admin only) |
@@ -211,23 +241,39 @@ File type (e.g., PDF, JPEG) and size are verified before saving.
 ```
 class User(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True)
-    full_name = Column(String)
+
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
-    role = Column(String, default="customer")
+    password = Column(String)
     kyc_status = Column(String, default="pending")
+
+    accounts = relationship("Account", back_populates="user")
 ```
+
+## 🔹Account Model
+```
+class Account(Base):
+    __tablename__ = "accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    account_number = Column(String, unique=True, index=True)
+    account_type = Column(String)
+
+    user = relationship("User", back_populates="accounts")
+```
+
 ### 🔹KYC Model
 ```
 class KYC(Base):
     __tablename__ = "kyc"
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    document_type = Column(String)
-    document_url = Column(String)
-    status = Column(String, default="under_review")
-    verified_by = Column(String, nullable=True)
+    document_path = Column(String)
+    status = Column(String, default="pending")  # pending, approved, rejected
+
+    user = relationship("User", back_populates="kyc_documents")
 ```
 
 ---
