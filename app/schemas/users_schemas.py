@@ -1,15 +1,21 @@
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr
 
+# For creating a new user
 class UserCreate(BaseModel):
-    full_name: str
+    username: str
     email: EmailStr
     password: str
 
-class UserResponse(BaseModel):
-    id: int
-    full_name: str
-    email: str
-    role: str
-    kyc_status: str
+# For login
+class UserLogin(BaseModel):
+    username: str
+    password: str
 
-    model_config = ConfigDict(from_attributes=True)  # Pydantic v2 ORM support
+# For output (what is returned to client)
+class UserOut(BaseModel):
+    id: int
+    username: str
+    email: EmailStr
+
+    class Config:
+        from_attributes = True  # For Pydantic V2 (was orm_mode in V1)
